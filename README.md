@@ -248,8 +248,9 @@ when their required local component or credential is unavailable. See
 
 ## Screenshots and demo
 
-No screenshots are committed yet. A sanitized demonstration of push-to-talk, routing status, and a
-low-risk action will be added after final host-side privacy review.
+[Watch the Relay desktop-automation demo (MP4, 26 seconds)](docs/demo/relay-demo.mp4).
+
+The map viewport shown during the demonstration is intentionally blurred to remove location data.
 
 ## What this experiment taught us
 
