@@ -248,7 +248,7 @@ when their required local component or credential is unavailable. See
 
 ## Screenshots and demo
 
-[Watch the Relay desktop-automation demo (MP4, 26 seconds)](docs/demo/relay-demo.mp4).
+[Watch the Relay desktop-automation demo (MP4, 26 seconds)](docs/relay-demo.mp4).
 
 The map viewport shown during the demonstration is intentionally blurred to remove location data.
 
