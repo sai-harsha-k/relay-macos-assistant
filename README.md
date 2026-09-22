@@ -8,6 +8,12 @@ Relay is not production-ready. It is a working research prototype with real macO
 an intentionally narrow action vocabulary, and explicit safety boundaries. OpenAI or Codex is not
 required at runtime.
 
+## Screenshots and demo
+
+[![Relay demo](docs/demo-preview.png)](docs/relay-demo.mp4)
+
+The map viewport shown during the demonstration is intentionally blurred to remove location data.
+
 ## How it works
 
 Relay uses the least complex mechanism that can safely handle a request:
@@ -246,11 +252,6 @@ Normal unit tests mock external providers and make no Jev or Ollama calls. Integ
 when their required local component or credential is unavailable. See
 [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for the latest verified scope.
 
-## Screenshots and demo
-
-[Watch the Relay desktop-automation demo (MP4, 26 seconds)](docs/relay-demo.mp4).
-
-The map viewport shown during the demonstration is intentionally blurred to remove location data.
 
 ## What this experiment taught us
 
