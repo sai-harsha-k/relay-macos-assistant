@@ -5,6 +5,7 @@ from local_assistant.actions.models import (
     Scroll,
     SearchWeb,
     SendMessage,
+    TakeScreenshot,
 )
 from local_assistant.runtime.executor import ActionExecutor
 from local_assistant.runtime.types import ExecutionResult
@@ -18,6 +19,13 @@ def test_executor_dispatches_platform_action() -> None:
     )
     assert result.success
     assert platform.calls == [("open_app", "Calculator")]
+
+
+def test_executor_dispatches_typed_screenshot_action() -> None:
+    platform = FakePlatform()
+    result = ActionExecutor(platform, FakeBrowser(), FakeWriter()).execute(TakeScreenshot())
+    assert result.success
+    assert platform.calls == [("take_screenshot", None)]
 
 
 def test_executor_dispatches_browser_action() -> None:

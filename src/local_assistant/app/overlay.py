@@ -64,7 +64,7 @@ def clamp_overlay_origin(
 @dataclass(frozen=True, slots=True)
 class OverlaySnapshot:
     stage: PipelineStage = PipelineStage.IDLE
-    expanded: bool = True
+    expanded: bool = False
     transcript: str = ""
     route_source: str | None = None
     confidence: float | None = None
@@ -178,7 +178,6 @@ class OverlayPresenter:
             snapshot = replace(
                 current,
                 stage=stage,
-                expanded=True,
                 audio_level=0.0,
                 preview_error=None,
             )
@@ -213,7 +212,6 @@ class OverlayPresenter:
         snapshot = replace(
             current,
             stage=event.stage,
-            expanded=True,
             transcript=event.transcript if event.transcript is not None else current.transcript,
             route_source=(
                 event.route_source
@@ -289,10 +287,14 @@ class OverlayPresenter:
         self._interacting = interacting
 
     def expand(self) -> None:
-        return
+        current = self.snapshot
+        if not current.expanded:
+            self._publish(replace(current, expanded=True))
 
     def collapse(self) -> None:
-        return
+        current = self.snapshot
+        if current.expanded:
+            self._publish(replace(current, expanded=False))
 
     def close(self) -> None:
         self._cancel_collapse()

@@ -1,4 +1,6 @@
 import subprocess
+from datetime import datetime
+from pathlib import Path
 
 from local_assistant.platforms.macos import MacOSPlatformAdapter
 
@@ -147,3 +149,77 @@ def test_unsupported_messaging_app_is_not_driven_by_generic_keystrokes() -> None
     result = MacOSPlatformAdapter(runner=runner).send_message("Notes", "ABC", "hello")
     assert not result.success
     assert calls == []
+
+
+def test_screenshot_uses_default_directory_creates_it_and_verifies_file(
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"valid image data")
+        return completed()
+
+    adapter = MacOSPlatformAdapter(
+        runner=runner,
+        home_directory=tmp_path,
+        clock=lambda: datetime(2026, 9, 22, 12, 34, 56, 123456),
+    )
+    result = adapter.take_screenshot(None)
+    expected = tmp_path / "Pictures" / "Relay Screenshots" / "Screenshot 2026-09-22 at 12.34.56.png"
+
+    assert result.success
+    assert calls == [["screencapture", "-x", str(expected)]]
+    assert expected.parent.is_dir()
+    assert expected.is_file()
+    assert result.data == expected
+    assert result.message == f"Saved screenshot to {expected}"
+
+
+def test_screenshot_never_overwrites_existing_path(tmp_path: Path) -> None:
+    requested = tmp_path / "capture.png"
+    requested.write_bytes(b"original")
+
+    def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"new capture")
+        return completed()
+
+    result = MacOSPlatformAdapter(runner=runner).take_screenshot(requested)
+
+    assert result.success
+    assert requested.read_bytes() == b"original"
+    assert result.data == tmp_path / "capture-1.png"
+
+
+def test_screenshot_command_failure_surfaces_native_error(tmp_path: Path) -> None:
+    def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return completed(stderr="could not create image from display 0", code=1)
+
+    result = MacOSPlatformAdapter(runner=runner).take_screenshot(tmp_path / "capture.png")
+
+    assert not result.success
+    assert result.message == "could not create image from display 0"
+    assert not (tmp_path / "capture.png").exists()
+
+
+def test_screenshot_process_success_without_file_is_not_reported_as_success(
+    tmp_path: Path,
+) -> None:
+    result = MacOSPlatformAdapter(runner=lambda command, **kwargs: completed()).take_screenshot(
+        tmp_path / "missing.png"
+    )
+
+    assert not result.success
+    assert "reported success but no valid screenshot was created" in result.message
+
+
+def test_screenshot_directory_creation_failure_is_reported(
+    tmp_path: Path,
+) -> None:
+    blocked_parent = tmp_path / "not-a-directory"
+    blocked_parent.write_text("blocked")
+    result = MacOSPlatformAdapter().take_screenshot(blocked_parent / "capture.png")
+
+    assert not result.success
+    assert result.message.startswith("Could not create screenshot directory:")

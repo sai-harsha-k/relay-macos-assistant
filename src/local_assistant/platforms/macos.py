@@ -3,11 +3,15 @@ from __future__ import annotations
 import subprocess
 import time
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from pathlib import Path
 
 from local_assistant.runtime.types import ExecutionResult
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
+Clock = Callable[[], datetime]
+
+_SCREENSHOT_SUBDIRECTORY = Path("Pictures") / "Relay Screenshots"
 
 
 _WHATSAPP_SEND_SCRIPT = r"""on textForAttribute(anElement, attributeName)
@@ -205,8 +209,16 @@ end run"""
 
 
 class MacOSPlatformAdapter:
-    def __init__(self, runner: Runner = subprocess.run) -> None:
+    def __init__(
+        self,
+        runner: Runner = subprocess.run,
+        *,
+        home_directory: Path | None = None,
+        clock: Clock = datetime.now,
+    ) -> None:
         self._runner = runner
+        self._home_directory = home_directory or Path.home()
+        self._clock = clock
 
     def _run(self, command: Sequence[str], success_message: str) -> ExecutionResult:
         started = time.perf_counter()
@@ -402,13 +414,53 @@ class MacOSPlatformAdapter:
         )
 
     def take_screenshot(self, path: Path | None) -> ExecutionResult:
-        target = path or Path("screenshots") / time.strftime("screenshot-%Y%m%d-%H%M%S.png")
-        target = target.expanduser().resolve()
-        target.parent.mkdir(parents=True, exist_ok=True)
+        if path is None:
+            directory = self._home_directory / _SCREENSHOT_SUBDIRECTORY
+            filename = self._clock().strftime("Screenshot %Y-%m-%d at %H.%M.%S.png")
+            target = directory / filename
+        else:
+            target = path.expanduser()
+        target = self._available_path(target.resolve())
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return ExecutionResult(False, f"Could not create screenshot directory: {exc}")
         result = self._run(["screencapture", "-x", str(target)], f"Saved screenshot to {target}")
+        if not result.success:
+            return result
+        try:
+            size = target.stat().st_size if target.is_file() else 0
+        except OSError as exc:
+            return ExecutionResult(
+                False,
+                f"Could not verify screenshot file at {target}: {exc}",
+                duration_ms=result.duration_ms,
+            )
+        if size <= 0:
+            return ExecutionResult(
+                False,
+                f"screencapture reported success but no valid screenshot was created at {target}",
+                duration_ms=result.duration_ms,
+            )
         return ExecutionResult(
-            result.success, result.message, target if result.success else None, result.duration_ms
+            True,
+            f"Saved screenshot to {target}",
+            target,
+            result.duration_ms,
         )
+
+    @staticmethod
+    def _available_path(target: Path) -> Path:
+        """Return a non-existing path without silently overwriting an existing capture."""
+        if not target.exists():
+            return target
+        suffix = target.suffix
+        stem = target.stem
+        for index in range(1, 10_000):
+            candidate = target.with_name(f"{stem}-{index}{suffix}")
+            if not candidate.exists():
+                return candidate
+        raise RuntimeError(f"Could not allocate a unique screenshot filename near {target}")
 
     def send_message(self, app_name: str, recipient: str, content: str) -> ExecutionResult:
         if app_name.casefold().removesuffix(".app") != "whatsapp":

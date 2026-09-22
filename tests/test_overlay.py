@@ -38,29 +38,33 @@ def test_saved_overlay_position_is_clamped_to_visible_screen() -> None:
     assert clamp_overlay_origin(100, 100, 430, 294, screens) == (100, 100)
 
 
-def test_overlay_remains_fixed_during_activity_and_processing() -> None:
+def test_overlay_stays_compact_during_activity_until_user_expands_it() -> None:
     presenter = OverlayPresenter()
+    assert not presenter.snapshot.expanded
     presenter.handle_stage(PipelineStage.LISTENING)
-    assert presenter.snapshot.expanded
+    assert not presenter.snapshot.expanded
 
     presenter.speech_activity()
-    assert presenter.snapshot.expanded
+    assert not presenter.snapshot.expanded
 
-    presenter.collapse()
+    presenter.expand()
     assert presenter.snapshot.expanded
     presenter.handle_event(PipelineEvent(PipelineStage.TRANSCRIBING))
     assert presenter.snapshot.expanded
+
+    presenter.collapse()
+    assert not presenter.snapshot.expanded
 
 
 def test_done_and_error_never_resize_overlay() -> None:
     scheduler = FakeScheduler()
     presenter = OverlayPresenter(scheduler=scheduler)
     presenter.handle_event(PipelineEvent(PipelineStage.DONE, result="Opened Calculator"))
-    assert presenter.snapshot.expanded
+    assert not presenter.snapshot.expanded
     assert scheduler.pending is None
 
     presenter.handle_event(PipelineEvent(PipelineStage.ERROR, error="Failed"))
-    assert presenter.snapshot.expanded
+    assert not presenter.snapshot.expanded
 
 
 def test_completed_result_remains_visible_until_next_utterance() -> None:
@@ -73,6 +77,18 @@ def test_completed_result_remains_visible_until_next_utterance() -> None:
         PipelineEvent(PipelineStage.LISTENING, transcript="open chrome", partial=True)
     )
     assert presenter.snapshot.result is None
+
+
+def test_full_screenshot_path_is_available_to_expanded_overlay() -> None:
+    saved_path = "/Users/example/Pictures/Relay Screenshots/Screenshot 2026-09-22 at 12.34.56.png"
+    presenter = OverlayPresenter()
+    presenter.handle_event(
+        PipelineEvent(PipelineStage.DONE, result=f"Saved screenshot to {saved_path}")
+    )
+    presenter.expand()
+
+    assert presenter.snapshot.expanded
+    assert presenter.snapshot.result == f"Saved screenshot to {saved_path}"
 
 
 def test_jev_route_confidence_and_action_are_presented() -> None:

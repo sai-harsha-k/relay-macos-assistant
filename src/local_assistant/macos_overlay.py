@@ -32,8 +32,10 @@ from AppKit import (  # type: ignore[import-untyped]
 from local_assistant.app.overlay import OverlayPresenter, OverlaySnapshot, clamp_overlay_origin
 from local_assistant.runtime.types import PipelineStage
 
-_PANEL_WIDTH = 430.0
-_PANEL_HEIGHT = 294.0
+_COMPACT_WIDTH = 430.0
+_COMPACT_HEIGHT = 294.0
+_EXPANDED_WIDTH = 620.0
+_EXPANDED_HEIGHT = 500.0
 
 
 def _label(text: str, frame: tuple[float, float, float, float], size: float) -> Any:
@@ -79,16 +81,18 @@ class RelayOverlayWindow(NSObject):  # type: ignore[misc]
         origin_x = (
             saved_x
             if saved_x is not None
-            else visible.origin.x + visible.size.width - _PANEL_WIDTH - 22
+            else visible.origin.x + visible.size.width - _COMPACT_WIDTH - 22
         )
         origin_y = (
             saved_y
             if saved_y is not None
-            else visible.origin.y + visible.size.height - _PANEL_HEIGHT - 22
+            else visible.origin.y + visible.size.height - _COMPACT_HEIGHT - 22
         )
-        origin_x, origin_y = self._visible_origin(origin_x, origin_y)
+        origin_x, origin_y = self._visible_origin(
+            origin_x, origin_y, _COMPACT_WIDTH, _COMPACT_HEIGHT
+        )
         self._panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(origin_x, origin_y, _PANEL_WIDTH, _PANEL_HEIGHT),
+            NSMakeRect(origin_x, origin_y, _COMPACT_WIDTH, _COMPACT_HEIGHT),
             NSWindowStyleMaskBorderless,
             NSBackingStoreBuffered,
             False,
@@ -105,7 +109,7 @@ class RelayOverlayWindow(NSObject):  # type: ignore[misc]
         )
 
         self._effect = NSVisualEffectView.alloc().initWithFrame_(
-            NSMakeRect(0, 0, _PANEL_WIDTH, _PANEL_HEIGHT)
+            NSMakeRect(0, 0, _COMPACT_WIDTH, _COMPACT_HEIGHT)
         )
         self._effect.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
         self._effect.setMaterial_(NSVisualEffectMaterialHUDWindow)
@@ -119,8 +123,9 @@ class RelayOverlayWindow(NSObject):  # type: ignore[misc]
         self._brand = _label("◉  Relay", (16, 259, 92, 22), 14)
         self._brand.setFont_(NSFont.boldSystemFontOfSize_(14))
         self._status = _label("Ready", (108, 259, 230, 22), 13)
-        self._meter = _label("", (350, 259, 60, 22), 11)
+        self._meter = _label("", (348, 259, 44, 22), 11)
         self._meter.setTextColor_(NSColor.systemGreenColor())
+        self._toggle_button = _button("⌄", (396, 256, 24, 26), self, "toggleClicked:")
         self._transcript = _label("", (18, 198, 394, 48), 15)
         self._transcript.setMaximumNumberOfLines_(2)
         self._transcript.setLineBreakMode_(0)
@@ -152,20 +157,30 @@ class RelayOverlayWindow(NSObject):  # type: ignore[misc]
             self._brand,
             self._status,
             self._meter,
+            self._toggle_button,
             *self._detail_views,
         ):
             self._effect.addSubview_(view)
+        self._expanded = False
         return self
 
     @objc.python_method  # type: ignore[untyped-decorator]
     def show(self) -> None:
+        frame = self._panel.frame()
         origin = self._panel.frame().origin
-        x, y = self._visible_origin(float(origin.x), float(origin.y))
+        x, y = self._visible_origin(
+            float(origin.x),
+            float(origin.y),
+            float(frame.size.width),
+            float(frame.size.height),
+        )
         self._panel.setFrameOrigin_(NSMakePoint(x, y))
         self._panel.orderFrontRegardless()
 
     @objc.python_method  # type: ignore[untyped-decorator]
-    def _visible_origin(self, x: float, y: float) -> tuple[float, float]:
+    def _visible_origin(
+        self, x: float, y: float, width: float, height: float
+    ) -> tuple[float, float]:
         frames = tuple(
             (
                 float(screen.visibleFrame().origin.x),
@@ -175,7 +190,58 @@ class RelayOverlayWindow(NSObject):  # type: ignore[misc]
             )
             for screen in NSScreen.screens()
         )
-        return clamp_overlay_origin(x, y, _PANEL_WIDTH, _PANEL_HEIGHT, frames)
+        return clamp_overlay_origin(x, y, width, height, frames)
+
+    @objc.python_method  # type: ignore[untyped-decorator]
+    def _apply_layout(self, expanded: bool) -> None:
+        if self._expanded == expanded:
+            return
+        old_frame = self._panel.frame()
+        width = _EXPANDED_WIDTH if expanded else _COMPACT_WIDTH
+        height = _EXPANDED_HEIGHT if expanded else _COMPACT_HEIGHT
+        origin_x = float(old_frame.origin.x) + float(old_frame.size.width) - width
+        origin_y = float(old_frame.origin.y) + float(old_frame.size.height) - height
+        origin_x, origin_y = self._visible_origin(origin_x, origin_y, width, height)
+        self._panel.setFrame_display_animate_(
+            NSMakeRect(origin_x, origin_y, width, height), True, True
+        )
+        content_width = width - 36
+        if expanded:
+            self._brand.setFrame_(NSMakeRect(16, 465, 92, 22))
+            self._status.setFrame_(NSMakeRect(108, 465, 380, 22))
+            self._meter.setFrame_(NSMakeRect(520, 465, 44, 22))
+            self._toggle_button.setFrame_(NSMakeRect(582, 462, 28, 26))
+            self._transcript.setFrame_(NSMakeRect(18, 344, content_width, 100))
+            self._transcript.setMaximumNumberOfLines_(5)
+            self._whisper.setFrame_(NSMakeRect(18, 312, content_width, 20))
+            self._route.setFrame_(NSMakeRect(18, 282, content_width, 22))
+            self._confidence.setFrame_(NSMakeRect(18, 254, content_width, 20))
+            self._action.setFrame_(NSMakeRect(18, 210, content_width, 36))
+            self._action.setMaximumNumberOfLines_(2)
+            self._action.setLineBreakMode_(0)
+            self._timings.setFrame_(NSMakeRect(18, 180, content_width, 20))
+            self._result.setFrame_(NSMakeRect(18, 52, content_width, 118))
+            self._result.setMaximumNumberOfLines_(6)
+            self._result.setLineBreakMode_(0)
+        else:
+            self._brand.setFrame_(NSMakeRect(16, 259, 92, 22))
+            self._status.setFrame_(NSMakeRect(108, 259, 230, 22))
+            self._meter.setFrame_(NSMakeRect(348, 259, 44, 22))
+            self._toggle_button.setFrame_(NSMakeRect(396, 256, 24, 26))
+            self._transcript.setFrame_(NSMakeRect(18, 198, content_width, 48))
+            self._transcript.setMaximumNumberOfLines_(2)
+            self._whisper.setFrame_(NSMakeRect(18, 170, content_width, 20))
+            self._route.setFrame_(NSMakeRect(18, 142, content_width, 22))
+            self._confidence.setFrame_(NSMakeRect(18, 118, content_width, 20))
+            self._action.setFrame_(NSMakeRect(18, 88, content_width, 22))
+            self._action.setMaximumNumberOfLines_(1)
+            self._action.setLineBreakMode_(NSLineBreakByTruncatingTail)
+            self._timings.setFrame_(NSMakeRect(18, 62, content_width, 20))
+            self._result.setFrame_(NSMakeRect(18, 38, content_width, 20))
+            self._result.setMaximumNumberOfLines_(1)
+            self._result.setLineBreakMode_(NSLineBreakByTruncatingTail)
+        self._toggle_button.setTitle_("⌃" if expanded else "⌄")
+        self._expanded = expanded
 
     @objc.python_method  # type: ignore[untyped-decorator]
     def close(self) -> None:
@@ -193,6 +259,7 @@ class RelayOverlayWindow(NSObject):  # type: ignore[misc]
 
     @objc.python_method  # type: ignore[untyped-decorator]
     def render(self, snapshot: OverlaySnapshot) -> None:
+        self._apply_layout(snapshot.expanded)
         self._status.setStringValue_(snapshot.status_text)
         if snapshot.transcript:
             self._transcript.setStringValue_(f"“{snapshot.transcript}”")
@@ -278,3 +345,13 @@ class RelayOverlayWindow(NSObject):  # type: ignore[misc]
 
     def settingsClicked_(self, _sender: Any) -> None:
         self._on_settings()
+
+    def toggleClicked_(self, _sender: Any) -> None:
+        self._presenter.set_interacting(True)
+        try:
+            if self._presenter.snapshot.expanded:
+                self._presenter.collapse()
+            else:
+                self._presenter.expand()
+        finally:
+            self._presenter.set_interacting(False)
