@@ -10,7 +10,7 @@ required at runtime.
 
 ## Screenshots and demo
 
-[![Relay demo](docs/demo-preview.png)](docs/relay-demo.mp4)
+https://github.com/user-attachments/assets/c165af17-d9c7-4100-870c-984545042e86
 
 The map viewport shown during the demonstration is intentionally blurred to remove location data.
 
